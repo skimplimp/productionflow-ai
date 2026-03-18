@@ -1031,6 +1031,30 @@ export type Database = {
           },
         ]
       }
+      stripe_customers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          stripe_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          stripe_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          stripe_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       submission_audit: {
         Row: {
           changed_at: string | null
@@ -1236,6 +1260,9 @@ export type Database = {
       tools: {
         Row: {
           affiliate_url: string | null
+          app_store_id: string | null
+          app_store_rank: number | null
+          app_store_rank_updated_at: string | null
           archived_at: string | null
           archived_reason: string | null
           best_for: string | null
@@ -1251,6 +1278,7 @@ export type Database = {
           forecast_data: Json | null
           github_url: string | null
           growth_momentum_score: number | null
+          has_free_tier: boolean | null
           id: string
           is_archived: boolean
           is_dev_submitted: boolean
@@ -1261,11 +1289,13 @@ export type Database = {
           listing_tier: string | null
           logo_source: string | null
           logo_url: string | null
+          monthly_cost_usd: number | null
           name: string
           not_best_fit: string | null
           onboarding_expectations: string | null
           pricing_info: string | null
           pricing_model: string | null
+          pricing_tiers: Json | null
           product_hunt_slug: string | null
           score_delta_24h: number | null
           score_delta_30d: number | null
@@ -1273,6 +1303,7 @@ export type Database = {
           search_interest_score: number | null
           search_keyword: string | null
           slug: string | null
+          sparkline_data: Json | null
           trend_phase: string | null
           trend_phase_updated_at: string | null
           updated_at: string | null
@@ -1282,6 +1313,9 @@ export type Database = {
         }
         Insert: {
           affiliate_url?: string | null
+          app_store_id?: string | null
+          app_store_rank?: number | null
+          app_store_rank_updated_at?: string | null
           archived_at?: string | null
           archived_reason?: string | null
           best_for?: string | null
@@ -1297,6 +1331,7 @@ export type Database = {
           forecast_data?: Json | null
           github_url?: string | null
           growth_momentum_score?: number | null
+          has_free_tier?: boolean | null
           id?: string
           is_archived?: boolean
           is_dev_submitted?: boolean
@@ -1307,11 +1342,13 @@ export type Database = {
           listing_tier?: string | null
           logo_source?: string | null
           logo_url?: string | null
+          monthly_cost_usd?: number | null
           name: string
           not_best_fit?: string | null
           onboarding_expectations?: string | null
           pricing_info?: string | null
           pricing_model?: string | null
+          pricing_tiers?: Json | null
           product_hunt_slug?: string | null
           score_delta_24h?: number | null
           score_delta_30d?: number | null
@@ -1319,6 +1356,7 @@ export type Database = {
           search_interest_score?: number | null
           search_keyword?: string | null
           slug?: string | null
+          sparkline_data?: Json | null
           trend_phase?: string | null
           trend_phase_updated_at?: string | null
           updated_at?: string | null
@@ -1328,6 +1366,9 @@ export type Database = {
         }
         Update: {
           affiliate_url?: string | null
+          app_store_id?: string | null
+          app_store_rank?: number | null
+          app_store_rank_updated_at?: string | null
           archived_at?: string | null
           archived_reason?: string | null
           best_for?: string | null
@@ -1343,6 +1384,7 @@ export type Database = {
           forecast_data?: Json | null
           github_url?: string | null
           growth_momentum_score?: number | null
+          has_free_tier?: boolean | null
           id?: string
           is_archived?: boolean
           is_dev_submitted?: boolean
@@ -1353,11 +1395,13 @@ export type Database = {
           listing_tier?: string | null
           logo_source?: string | null
           logo_url?: string | null
+          monthly_cost_usd?: number | null
           name?: string
           not_best_fit?: string | null
           onboarding_expectations?: string | null
           pricing_info?: string | null
           pricing_model?: string | null
+          pricing_tiers?: Json | null
           product_hunt_slug?: string | null
           score_delta_24h?: number | null
           score_delta_30d?: number | null
@@ -1365,6 +1409,7 @@ export type Database = {
           search_interest_score?: number | null
           search_keyword?: string | null
           slug?: string | null
+          sparkline_data?: Json | null
           trend_phase?: string | null
           trend_phase_updated_at?: string | null
           updated_at?: string | null
@@ -1909,6 +1954,7 @@ export type Database = {
       }
       cleanup_old_score_history: { Args: never; Returns: number }
       cleanup_old_scout_logs: { Args: never; Returns: number }
+      refresh_sparkline_data: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
@@ -2041,4 +2087,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
