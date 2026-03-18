@@ -113,7 +113,7 @@ async function getBlueprintDetail(
       }
     }
 
-    return { blueprint: blueprint as Blueprint, tools };
+    return { blueprint: blueprint as unknown as Blueprint, tools };
   } catch (err) {
     console.error('[Blueprint detail] Error:', err);
     return null;
