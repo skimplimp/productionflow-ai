@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,19 @@ interface SwapSuggestion {
   reason: string;
 }
 
+interface PricingTier {
+  name: string;
+  price_monthly: number;
+  price_label: string;
+  highlights: string[];
+}
+
+interface PricingTiers {
+  price_min: number;
+  price_max: number;
+  tiers: PricingTier[];
+}
+
 interface MatchedTool {
   input_name: string;
   canonical_name: string;
@@ -34,6 +47,7 @@ interface MatchedTool {
   score_delta_7d: number | null;
   pricing_model: string | null;
   pricing_info: string | null;
+  pricing_tiers: PricingTiers | null;
   affiliate_url: string | null;
   monthly_cost?: number;
   trend_signal: TrendSignal;
@@ -283,62 +297,163 @@ export default function AuditPage() {
   );
 }
 
+// ── Price range helper ────────────────────────────────────────────────────────
+
+function formatPriceRange(tool: MatchedTool): string | null {
+  if (tool.pricing_tiers) {
+    const { price_min, price_max } = tool.pricing_tiers;
+    if (price_min === 0 && price_max === 0) return "Free";
+    if (price_min === 0) return `Free → $${price_max}/mo`;
+    return `$${price_min} → $${price_max}/mo`;
+  }
+  if (tool.pricing_model === "free") return "Free";
+  if (tool.pricing_model === "freemium") return "Free tier available";
+  if (tool.pricing_info) return tool.pricing_info.replace("Freemium | Free trial: Yes", "Free tier + paid plans").replace("Paid | Free trial: Yes", "Paid (free trial)").replace("Paid | Free trial: No", "Paid");
+  return null;
+}
+
+// ── Tool result card ──────────────────────────────────────────────────────────
+
 function ToolResultCard({ tool }: { tool: MatchedTool }) {
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setExpanded((v) => !v), []);
+
   const badgeClass = SEVERITY_CLASSES[tool.trend_signal.severity];
   const delta = tool.score_delta_7d;
   const deltaLabel = delta !== null
     ? delta > 0 ? `+${delta}` : `${delta}`
     : null;
 
+  const priceRange = formatPriceRange(tool);
+  const hasTiers = !!(tool.pricing_tiers?.tiers?.length);
+
   return (
-    <div className={`bg-[var(--card)] border rounded-xl p-4 transition-colors ${
+    <div className={`bg-[var(--card)] border rounded-xl transition-colors ${
       tool.trend_signal.severity === "danger"   ? "border-red-500/30" :
       tool.trend_signal.severity === "warning"  ? "border-amber-500/30" :
       tool.trend_signal.severity === "positive" ? "border-emerald-500/20" :
       "border-[var(--card-border)]"
     }`}>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-semibold text-white">{tool.canonical_name}</span>
-            {tool.input_name.toLowerCase() !== tool.canonical_name.toLowerCase() && (
-              <span className="text-xs text-gray-600">← you entered "{tool.input_name}"</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-            {tool.category && <span>{tool.category}</span>}
-            {tool.category && <span>·</span>}
-            <span>Heat score: <span className="text-white font-medium">{tool.viral_score}</span></span>
-            {deltaLabel && (
-              <span className={delta! > 0 ? "text-emerald-400" : "text-red-400"}>
-                ({deltaLabel} this week)
-              </span>
-            )}
-            {tool.pricing_model && <span>· {tool.pricing_model}</span>}
-            {tool.monthly_cost && <span>· ${tool.monthly_cost}/mo</span>}
-          </div>
-        </div>
-        <span className={`text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap ${badgeClass}`}>
-          {tool.trend_signal.label}
-        </span>
-      </div>
 
-      {/* Swap suggestion */}
-      {tool.swap_suggestion && (
-        <div className="mt-3 pt-3 border-t border-[var(--card-border)]">
-          <div className="flex items-start gap-2 text-sm">
-            <span className="text-amber-400 mt-0.5 flex-shrink-0">⚡</span>
-            <div>
-              <span className="text-gray-300">Consider switching to </span>
-              {tool.swap_suggestion.affiliate_url ? (
-                <a href={tool.swap_suggestion.affiliate_url} target="_blank" rel="noopener noreferrer"
-                  className="text-emerald-400 hover:underline font-medium">{tool.swap_suggestion.name}</a>
-              ) : (
-                <span className="text-emerald-400 font-medium">{tool.swap_suggestion.name}</span>
+      {/* ── Main row (always visible) ── */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="font-semibold text-white">{tool.canonical_name}</span>
+              {tool.input_name.toLowerCase() !== tool.canonical_name.toLowerCase() && (
+                <span className="text-xs text-gray-600">← you entered &quot;{tool.input_name}&quot;</span>
               )}
-              <span className="text-gray-500"> — {tool.swap_suggestion.reason}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+              {tool.category && <span>{tool.category}</span>}
+              {tool.category && <span>·</span>}
+              <span>Heat score: <span className="text-white font-medium">{tool.viral_score}</span></span>
+              {deltaLabel && (
+                <span className={delta! > 0 ? "text-emerald-400" : "text-red-400"}>
+                  ({deltaLabel} this week)
+                </span>
+              )}
             </div>
           </div>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap ${badgeClass}`}>
+            {tool.trend_signal.label}
+          </span>
+        </div>
+
+        {/* ── Pricing row ── */}
+        <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            {tool.monthly_cost ? (
+              <>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                  You pay: ${tool.monthly_cost}/mo
+                </span>
+                {priceRange && (
+                  <span className="text-gray-600">· Range: {priceRange}</span>
+                )}
+              </>
+            ) : priceRange ? (
+              <span className="px-2 py-0.5 rounded-full bg-[var(--background)] text-gray-400 border border-[var(--card-border)]">
+                💰 {priceRange}
+              </span>
+            ) : null}
+          </div>
+
+          {hasTiers && (
+            <button
+              onClick={toggleExpanded}
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 flex-shrink-0"
+            >
+              {expanded ? "Hide" : "View"} pricing tiers
+              <span className={`transition-transform ${expanded ? "rotate-180" : ""}`}>▾</span>
+            </button>
+          )}
+        </div>
+
+        {/* ── Swap suggestion ── */}
+        {tool.swap_suggestion && (
+          <div className="mt-3 pt-3 border-t border-[var(--card-border)]">
+            <div className="flex items-start gap-2 text-sm">
+              <span className="text-amber-400 mt-0.5 flex-shrink-0">⚡</span>
+              <div>
+                <span className="text-gray-300">Consider switching to </span>
+                {tool.swap_suggestion.affiliate_url ? (
+                  <a href={tool.swap_suggestion.affiliate_url} target="_blank" rel="noopener noreferrer"
+                    className="text-emerald-400 hover:underline font-medium">{tool.swap_suggestion.name}</a>
+                ) : (
+                  <span className="text-emerald-400 font-medium">{tool.swap_suggestion.name}</span>
+                )}
+                <span className="text-gray-500"> — {tool.swap_suggestion.reason}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Expandable tier breakdown ── */}
+      {expanded && hasTiers && (
+        <div className="border-t border-[var(--card-border)] px-4 pb-4 pt-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Pricing tiers</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {tool.pricing_tiers!.tiers.map((tier, i) => (
+              <div
+                key={tier.name}
+                className={`rounded-lg p-3 border ${
+                  i === 0
+                    ? "border-[var(--card-border)] bg-[var(--background)]"
+                    : "border-emerald-500/20 bg-emerald-500/5"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-white">{tier.name}</span>
+                  <span className={`text-sm font-bold ${
+                    tier.price_monthly === 0 ? "text-emerald-400" : "text-white"
+                  }`}>
+                    {tier.price_label}
+                  </span>
+                </div>
+                <ul className="space-y-1">
+                  {tier.highlights.map((h) => (
+                    <li key={h} className="flex items-start gap-1.5 text-xs text-gray-400">
+                      <span className="text-emerald-500 flex-shrink-0 mt-0.5">✓</span>
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          {tool.affiliate_url && (
+            <a
+              href={tool.affiliate_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              View full pricing →
+            </a>
+          )}
         </div>
       )}
     </div>

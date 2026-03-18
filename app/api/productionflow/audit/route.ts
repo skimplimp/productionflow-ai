@@ -51,6 +51,19 @@ const auditRequestSchema = z.object({
 // Types
 // ---------------------------------------------------------------------------
 
+interface PricingTier {
+  name: string;
+  price_monthly: number;
+  price_label: string;
+  highlights: string[];
+}
+
+interface PricingTiers {
+  price_min: number;
+  price_max: number;
+  tiers: PricingTier[];
+}
+
 interface MatchedTool {
   input_name: string;
   canonical_name: string;
@@ -61,6 +74,7 @@ interface MatchedTool {
   score_delta_7d: number | null;
   pricing_model: string | null;
   pricing_info: string | null;
+  pricing_tiers: PricingTiers | null;
   affiliate_url: string | null;
   monthly_cost?: number;
   trend_signal: TrendSignal;
@@ -123,15 +137,30 @@ async function resolveTool(
 // Helper: find best swap for a cooling/fading tool
 // ---------------------------------------------------------------------------
 
+// Minimum point advantage before a swap is worth surfacing.
+// Below this threshold the tools are too close to call — surfacing a swap
+// recommendation for a 2-pt difference (e.g. Gemini 51 → Claude 53) adds noise.
+const MIN_SWAP_DELTA = 10;
+
 async function findSwapSuggestion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   currentToolId: string,
   category: string | null,
-  currentScore: number
+  currentScore: number,
+  currentDelta: number | null  // the current tool's 7-day score change
 ): Promise<SwapSuggestion | null> {
   if (!category) return null;
 
-  // First pass: same category, higher score, with confirmed upward trend_phase
+  const minScore = currentScore + MIN_SWAP_DELTA;
+
+  // Build decline context so the reason explains WHY the current tool is flagged,
+  // not just that the suggested tool has a bigger number.
+  const declineContext =
+    currentDelta !== null && currentDelta <= -5
+      ? `It's lost ${Math.abs(currentDelta)} pts this week`
+      : "It's losing momentum";
+
+  // First pass: same category, meaningfully higher score, confirmed upward trend
   const { data } = await supabase
     .from('tools')
     .select('name, slug, viral_score, trend_phase, pricing_model, affiliate_url')
@@ -139,13 +168,18 @@ async function findSwapSuggestion(
     .eq('is_archived', false)
     .is('deleted_at', null)
     .neq('id', currentToolId)
-    .gt('viral_score', currentScore)
+    .gte('viral_score', minScore)
     .in('trend_phase', ['emerging', 'rising', 'peak'])
     .order('viral_score', { ascending: false })
     .limit(1)
     .single();
 
   if (data) {
+    const delta = (data.viral_score ?? 0) - currentScore;
+    const phaseLabel =
+      data.trend_phase === 'emerging' ? 'heating up fast'
+      : data.trend_phase === 'rising'  ? 'on the rise'
+      : 'at peak right now';
     return {
       name: data.name,
       slug: data.slug ?? '',
@@ -153,11 +187,11 @@ async function findSwapSuggestion(
       trend_phase: data.trend_phase,
       pricing_model: data.pricing_model,
       affiliate_url: data.affiliate_url,
-      reason: `Trending ${data.trend_phase ?? 'up'} with a heat score of ${data.viral_score} — ${(data.viral_score ?? 0) - currentScore} pts higher`,
+      reason: `${declineContext} — ${data.name} is ${phaseLabel} and ${delta} pts stronger`,
     };
   }
 
-  // Second pass: relax — just find anything higher in the same category
+  // Second pass: relax trend requirement, still enforce minimum delta
   const { data: fallback } = await supabase
     .from('tools')
     .select('name, slug, viral_score, trend_phase, pricing_model, affiliate_url')
@@ -165,13 +199,14 @@ async function findSwapSuggestion(
     .eq('is_archived', false)
     .is('deleted_at', null)
     .neq('id', currentToolId)
-    .gt('viral_score', currentScore)
+    .gte('viral_score', minScore)
     .order('viral_score', { ascending: false })
     .limit(1)
     .single();
 
   if (!fallback) return null;
 
+  const delta = (fallback.viral_score ?? 0) - currentScore;
   return {
     name: fallback.name,
     slug: fallback.slug ?? '',
@@ -179,7 +214,7 @@ async function findSwapSuggestion(
     trend_phase: fallback.trend_phase,
     pricing_model: fallback.pricing_model,
     affiliate_url: fallback.affiliate_url,
-    reason: `Higher heat score (+${(fallback.viral_score ?? 0) - currentScore} pts) in the same category`,
+    reason: `${declineContext} — ${fallback.name} leads the same category by ${delta} pts`,
   };
 }
 
@@ -230,7 +265,7 @@ export async function POST(request: NextRequest) {
       const { data: toolData } = await supabase
         .from('tools')
         .select(
-          'id, name, slug, category, viral_score, trend_phase, score_delta_7d, pricing_model, pricing_info, affiliate_url'
+          'id, name, slug, category, viral_score, trend_phase, score_delta_7d, pricing_model, pricing_info, pricing_tiers, affiliate_url'
         )
         .eq('id', resolved.id)
         .single();
@@ -249,7 +284,8 @@ export async function POST(request: NextRequest) {
           supabase,
           toolData.id,
           toolData.category,
-          toolData.viral_score ?? 0
+          toolData.viral_score ?? 0,
+          toolData.score_delta_7d
         );
       }
 
@@ -263,6 +299,7 @@ export async function POST(request: NextRequest) {
         score_delta_7d: toolData.score_delta_7d,
         pricing_model: toolData.pricing_model,
         pricing_info: toolData.pricing_info,
+        pricing_tiers: (toolData.pricing_tiers as PricingTiers | null) ?? null,
         affiliate_url: toolData.affiliate_url,
         monthly_cost: inputTool.monthly_cost,
         trend_signal: trendSignal,
